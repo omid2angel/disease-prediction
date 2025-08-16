@@ -1,0 +1,332 @@
+import React, { useMemo, useRef, useState } from "react";
+
+const SYMPTOMS = [
+  'itching', 'skin_rash', 'nodal_skin_eruptions',
+       'continuous_sneezing', 'shivering', 'chills', 'joint_pain',
+       'stomach_pain', 'acidity', 'ulcers_on_tongue', 'muscle_wasting',
+       'vomiting', 'burning_micturition', 'spotting_ urination',
+       'fatigue', 'weight_gain', 'anxiety', 'cold_hands_and_feets',
+       'mood_swings', 'weight_loss', 'restlessness', 'lethargy',
+       'patches_in_throat', 'irregular_sugar_level', 'cough',
+       'high_fever', 'sunken_eyes', 'breathlessness', 'sweating',
+       'dehydration', 'indigestion', 'headache', 'yellowish_skin',
+       'dark_urine', 'nausea', 'loss_of_appetite', 'pain_behind_the_eyes',
+       'back_pain', 'constipation', 'abdominal_pain', 'diarrhoea',
+       'mild_fever', 'yellow_urine', 'yellowing_of_eyes',
+       'acute_liver_failure', 'fluid_overload', 'swelling_of_stomach',
+       'swelled_lymph_nodes', 'malaise', 'blurred_and_distorted_vision',
+       'phlegm', 'throat_irritation', 'redness_of_eyes', 'sinus_pressure',
+       'runny_nose', 'congestion', 'chest_pain', 'weakness_in_limbs',
+       'fast_heart_rate', 'pain_during_bowel_movements',
+       'pain_in_anal_region', 'bloody_stool', 'irritation_in_anus',
+       'neck_pain', 'dizziness', 'cramps', 'bruising', 'obesity',
+       'swollen_legs', 'swollen_blood_vessels', 'puffy_face_and_eyes',
+       'enlarged_thyroid', 'brittle_nails', 'swollen_extremeties',
+       'excessive_hunger', 'extra_marital_contacts',
+       'drying_and_tingling_lips', 'slurred_speech', 'knee_pain',
+       'hip_joint_pain', 'muscle_weakness', 'stiff_neck',
+       'swelling_joints', 'movement_stiffness', 'spinning_movements',
+       'loss_of_balance', 'unsteadiness', 'weakness_of_one_body_side',
+       'loss_of_smell', 'bladder_discomfort', 'foul_smell_of urine',
+       'continuous_feel_of_urine', 'passage_of_gases', 'internal_itching',
+       'toxic_look_(typhos)', 'depression', 'irritability', 'muscle_pain',
+       'altered_sensorium', 'red_spots_over_body', 'belly_pain',
+       'abnormal_menstruation', 'dischromic _patches',
+       'watering_from_eyes', 'increased_appetite', 'polyuria',
+       'family_history', 'mucoid_sputum', 'rusty_sputum',
+       'lack_of_concentration', 'visual_disturbances',
+       'receiving_blood_transfusion', 'receiving_unsterile_injections',
+       'coma', 'stomach_bleeding', 'distention_of_abdomen',
+       'history_of_alcohol_consumption', 'fluid_overload.1',
+       'blood_in_sputum', 'prominent_veins_on_calf', 'palpitations',
+       'painful_walking', 'pus_filled_pimples', 'blackheads', 'scurring',
+       'skin_peeling', 'silver_like_dusting', 'small_dents_in_nails',
+       'inflammatory_nails', 'blister', 'red_sore_around_nose',
+       'yellow_crust_ooze'
+];
+
+function FormInput() {
+  const [symptoms, setSymptoms] = useState("");
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // for porpose
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
+  const boxRef = useRef(null);
+  const inputRef = useRef(null);
+
+  // tokenize text input
+  const tokens = useMemo(
+    () => symptoms.split(",").map(t => t.trim()).filter(Boolean),
+    [symptoms]
+  );
+
+  // last token for suggestions
+  const lastFragment = useMemo(() => {
+    const lastComma = symptoms.lastIndexOf(",");
+    const frag = lastComma === -1 ? symptoms : symptoms.slice(lastComma + 1);
+    return frag.trim();
+  }, [symptoms]);
+
+  // suggestions based on last fragment and existing tokens
+  const suggestions = useMemo(() => {
+    if (!lastFragment) return [];
+    const used = new Set(tokens);
+    return SYMPTOMS
+      .filter(s => s.toLowerCase().includes(lastFragment.toLowerCase()))
+      .filter(s => !used.has(s))
+      .slice(0, 8); 
+  }, [lastFragment, tokens]);
+
+  const replaceLastFragment = (value) => {
+    const parts = symptoms.split(",");
+    if (parts.length === 0) {
+      setSymptoms(value + ",");
+      return;
+    }
+    
+    parts[parts.length - 1] = " " + value; 
+    const composed = parts.join(",").replace(/^,\s*/g, "");
+    setSymptoms(composed.endsWith(",") ? composed : composed + ",");
+  };
+
+  const onPick = (value) => {
+    replaceLastFragment(value);
+    setOpen(false);
+    setHighlight(0);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
+  const onChange = (e) => {
+    setSymptoms(e.target.value);
+    setOpen(true);
+    setHighlight(0);
+  };
+
+  const onKeyDown = (e) => {
+    if (!open || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight(i => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight(i => (i - 1 + suggestions.length) % suggestions.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      onPick(suggestions[highlight]);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  const handlePredict = async () => {
+    const clean = tokens.join(","); // normalize input
+    if (!clean) {
+      alert("⚠️ Please enter at least one symptom.");
+      return;
+    }
+    setLoading(true);
+    setResult(null);
+    try {
+      const response = await fetch("http://127.0.0.1:8000/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symptoms: clean }),
+      });
+      const data = await response.json();
+      setResult(data);
+    } catch (error) {
+      console.error("Error:", error);
+      setResult({ error: "Something went wrong!" });
+    }
+    setLoading(false);
+  };
+
+  const removeToken = (t) => {
+    const left = tokens.filter(x => x !== t);
+    setSymptoms(left.join(",") + (left.length ? "," : ""));
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center p-6">
+      <div className="bg-white shadow-2xl rounded-2xl p-8 max-w-xl w-full">
+        <h1 className="text-3xl font-bold text-center text-blue-700 mb-6">
+          🧑‍⚕️ Disease Prediction
+        </h1>
+
+        <label className="block text-gray-700 mb-2 font-medium">
+          Enter Symptoms (comma separated):
+        </label>
+
+        {        /* Input with suggestions */}
+        <div className="relative" ref={boxRef}>
+          <textarea
+            ref={inputRef}
+            rows={4}
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="itching,skin_rash,nodal_skin_eruptions"
+            value={symptoms}
+            onChange={onChange}
+            onKeyDown={onKeyDown}
+            onFocus={() => suggestions.length && setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 120)} // delay to allow click
+          />
+
+          {/* Dropdown suggestion*/}
+          {open && suggestions.length > 0 && (
+            <ul className="absolute z-20 left-0 right-0 mt-1 max-h-56 overflow-auto bg-white border rounded-lg shadow">
+              {suggestions.map((s, i) => (
+                <li
+                  key={s}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onPick(s)}
+                  className={`px-3 py-2 cursor-pointer ${
+                    i === highlight ? "bg-blue-100" : "hover:bg-gray-100"
+                  }`}
+                >
+                  {s}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {}
+        {tokens.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {tokens.map(t => (
+              <span
+                key={t}
+                className="inline-flex items-center px-2 py-1 text-sm bg-blue-50 border border-blue-200 rounded-full"
+              >
+                {t}
+                <button
+                  className="ml-2 text-blue-600 hover:text-blue-800"
+                  onClick={() => removeToken(t)}
+                  aria-label={`remove ${t}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={handlePredict}
+          className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-black font-semibold py-2 rounded-lg transition duration-300"
+        >
+          {loading ? "Predicting..." : "Predict"}
+        </button>
+
+        {result && (
+          <div className="mt-6 bg-gray-50 p-4 rounded-lg border">
+            <h2 className="text-xl font-semibold text-gray-800 mb-3">Result:</h2>
+            {result.error ? (
+              <p className="text-red-500">{result.error}</p>
+            ) : (
+              <ul className="space-y-2 text-gray-700">
+                <li><strong>🌲 Random Forest:</strong> {result.rf_model_prediction}</li>
+                <li><strong>📊 Naive Bayes:</strong> {result.nb_model_prediction}</li>
+                <li><strong>📈 SVM:</strong> {result.svm_model_prediction}</li>
+                <li className="text-blue-700 font-bold">✅ Final Prediction: {result.final_prediction}</li>
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default FormInput;
+
+
+
+// function FormInput() {
+//   const [symptoms, setSymptoms] = useState("");
+//   const [result, setResult] = useState(null);
+//   const [loading, setLoading] = useState(false);
+
+//   const handlePredict = async () => {
+//     if (!symptoms.trim()) {
+//       alert("⚠️ لطفاً علائم را وارد کنید.");
+//       return;
+//     }
+
+//     setLoading(true);
+//     setResult(null);
+
+//     try {
+//       const response = await fetch("http://127.0.0.1:8000/predict", {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json" },
+//         body: JSON.stringify({ symptoms }),
+//       });
+
+//       const data = await response.json();
+//       setResult(data);
+//     } catch (error) {
+//       console.error("Error:", error);
+//       setResult({ error: "مشکلی پیش آمد!" });
+//     }
+
+//     setLoading(false);
+//   };
+
+//   return (
+//     <div className="min-h-screen bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center p-6">
+//       <div className="bg-white shadow-2xl rounded-2xl p-8 max-w-lg w-full">
+//         <h1 className="text-3xl font-bold text-center text-blue-700 mb-6">
+//           🧑‍⚕️ Disease Prediction
+//         </h1>
+
+//         <label className="block text-gray-700 mb-2 font-medium">
+//           Enter Symptoms (comma separated):
+//         </label>
+//         <textarea
+//           rows="4"
+//           className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+//           placeholder="itching,skin_rash,nodal_skin_eruptions"
+//           value={symptoms}
+//           onChange={(e) => setSymptoms(e.target.value)}
+//         />
+
+//         <button
+//           onClick={handlePredict}
+//           className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-black font-semibold py-2 rounded-lg transition duration-300"
+//         >
+//           {loading ? "Predicting..." : "Predict"}
+//         </button>
+
+//         {result && (
+//           <div className="mt-6 bg-gray-50 p-4 rounded-lg border">
+//             <h2 className="text-xl font-semibold text-gray-800 mb-3">Result:</h2>
+//             {result.error ? (
+//               <p className="text-red-500">{result.error}</p>
+//             ) : (
+//               <ul className="space-y-2 text-gray-700">
+//                 <li>
+//                   <strong>🌲 Random Forest:</strong> {result.rf_model_prediction}
+//                 </li>
+//                 <li>
+//                   <strong>📊 Naive Bayes:</strong> {result.nb_model_prediction}
+//                 </li>
+//                 <li>
+//                   <strong>📈 SVM:</strong> {result.svm_model_prediction}
+//                 </li>
+//                 <li className="text-blue-700 font-bold">
+//                   ✅ Final Prediction: {result.final_prediction}
+//                 </li>
+//               </ul>
+//             )}
+//           </div>
+//         )}
+//       </div>
+//     </div>
+//   );
+// }
+
+// export default FormInput;
